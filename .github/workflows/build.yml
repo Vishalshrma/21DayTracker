@@ -18,7 +18,7 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-           - name: Install Android SDK command-line tools
+      - name: Install Android SDK command-line tools
         run: |
           # Use runner temp directory for SDK (persist via GITHUB_ENV for other steps)
           ANDROID_SDK_ROOT="$RUNNER_TEMP/android-sdk"
@@ -58,14 +58,12 @@ jobs:
           YES_CMD="yes |"
           if command -v yes >/dev/null 2>&1; then YES_CMD="yes |"; else YES_CMD="printf 'y\n' |"; fi
 
-          # First try normal https; if it fails, retry with --no_https
           if ! $YES_CMD "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"; then
             echo "sdkmanager https failed, retrying with --no_https"
             $YES_CMD "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --no_https --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
           fi
 
           chmod -R a+rX "$ANDROID_SDK_ROOT"
-
 
       - name: Add Android tools to PATH
         run: |
