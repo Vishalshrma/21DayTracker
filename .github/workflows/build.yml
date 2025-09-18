@@ -18,15 +18,17 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Android SDK command-line tools (verbose)
+      - name: Install Android SDK command-line tools (robust)
         run: |
-          set -x
-          # Use runner temp directory for SDK and export
+          set -euo pipefail
+
+          # Use runner temp directory for SDK and export to GITHUB_ENV for other steps
           ANDROID_SDK_ROOT="$RUNNER_TEMP/android-sdk"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
           sudo apt-get update
           sudo apt-get install -y unzip wget ca-certificates
+
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
 
           ZIP_URL="https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
@@ -49,9 +51,11 @@ jobs:
           unzip -o cmdline.zip -d cmdline-tools
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           mv cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest" || true
+
+          # Ensure sdkmanager is executable
           chmod +x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/"* || true
 
-          # Install SDK packages (try https then fallback)
+          # Install SDK packages (try https then fallback to --no_https)
           YES_CMD="yes |"
           if ! $YES_CMD "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"; then
             echo "sdkmanager https failed, retrying with --no_https"
@@ -66,27 +70,13 @@ jobs:
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
           echo "PATH after append: $PATH"
 
-      - name: Build with Gradle (assembleDebug, verbose)
-        run: |
-          set -x
-          # Print Java and Gradle info
-          java -version || true
-          which java || true
-          gradle -v || true
-
-          # Run Gradle with detailed logging; capture log to file and upload
-          ./gradlew --version || true
-          ./gradlew assembleDebug --no-daemon --stacktrace --info | tee gradle-build.log
-        shell: bash
-
-      - name: Upload Gradle build log
-        if: always()
-        uses: actions/upload-artifact@v4
+      - name: Build with Gradle (assembleDebug) using Gradle Action
+        uses: gradle/gradle-build-action@v2
         with:
-          name: gradle-build-log
-          path: gradle-build.log
+          gradle-version: '8.4'
+          arguments: 'assembleDebug'
 
-      - name: Upload APK artifact
+      - name: Upload APK artifact (if build succeeded)
         if: success()
         uses: actions/upload-artifact@v4
         with:
