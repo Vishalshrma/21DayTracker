@@ -18,25 +18,24 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      - name: Install Android SDK command-line tools
+      - name: Install Android SDK command-line tools (verbose)
         run: |
-          # Use runner temp directory for SDK (persist via GITHUB_ENV for other steps)
+          set -x
+          # Use runner temp directory for SDK and export
           ANDROID_SDK_ROOT="$RUNNER_TEMP/android-sdk"
           echo "ANDROID_SDK_ROOT=$ANDROID_SDK_ROOT" >> $GITHUB_ENV
 
-          set -euo pipefail
           sudo apt-get update
           sudo apt-get install -y unzip wget ca-certificates
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
 
-          # Try download with retries and follow redirects
           ZIP_URL="https://dl.google.com/android/repository/commandlinetools-linux-9477386_latest.zip"
           MAX_TRIES=5
           i=0
           while [ $i -lt $MAX_TRIES ]; do
             i=$((i+1))
             echo "Downloading commandline tools (attempt $i/$MAX_TRIES)..."
-            wget -q --show-progress --tries=3 --timeout=30 --no-check-certificate -O cmdline.zip "$ZIP_URL" && break
+            wget --tries=3 --timeout=30 -O cmdline.zip "$ZIP_URL" && break || true
             echo "Download failed, retrying in 3s..."
             sleep 3
           done
@@ -50,14 +49,10 @@ jobs:
           unzip -o cmdline.zip -d cmdline-tools
           mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
           mv cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest" || true
-
-          # Ensure sdkmanager is executable
           chmod +x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/"* || true
 
-          # Install basic SDK components (use --no_https as fallback)
+          # Install SDK packages (try https then fallback)
           YES_CMD="yes |"
-          if command -v yes >/dev/null 2>&1; then YES_CMD="yes |"; else YES_CMD="printf 'y\n' |"; fi
-
           if ! $YES_CMD "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"; then
             echo "sdkmanager https failed, retrying with --no_https"
             $YES_CMD "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" --no_https --sdk_root="$ANDROID_SDK_ROOT" "platform-tools" "platforms;android-34" "build-tools;34.0.0"
@@ -69,14 +64,30 @@ jobs:
         run: |
           echo "$ANDROID_SDK_ROOT/platform-tools" >> $GITHUB_PATH
           echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> $GITHUB_PATH
+          echo "PATH after append: $PATH"
 
-      - name: Build with Gradle (assembleDebug)
-        uses: gradle/gradle-build-action@v2
+      - name: Build with Gradle (assembleDebug, verbose)
+        run: |
+          set -x
+          # Print Java and Gradle info
+          java -version || true
+          which java || true
+          gradle -v || true
+
+          # Run Gradle with detailed logging; capture log to file and upload
+          ./gradlew --version || true
+          ./gradlew assembleDebug --no-daemon --stacktrace --info | tee gradle-build.log
+        shell: bash
+
+      - name: Upload Gradle build log
+        if: always()
+        uses: actions/upload-artifact@v4
         with:
-          gradle-version: '8.4'
-          arguments: 'assembleDebug'
+          name: gradle-build-log
+          path: gradle-build.log
 
       - name: Upload APK artifact
+        if: success()
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
